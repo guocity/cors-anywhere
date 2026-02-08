@@ -1,9 +1,31 @@
+// Fix deprecation warnings from dependencies
+require('util')._extend = Object.assign;
+
 // Listen on a specific host via the HOST environment variable
 var host = process.env.HOST || '0.0.0.0';
 // Listen on a specific port via the PORT environment variable
 var port = process.env.PORT || 8080;
 
 var crypto = require('crypto');
+var fs = require('fs');
+var path = require('path');
+
+// Create log directory if it doesn't exist
+var logDir = path.join(__dirname, 'log');
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir);
+}
+
+function saveFullLog(logData) {
+  var now = new Date();
+  var logFileName = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '.log';
+  var logFilePath = path.join(logDir, logFileName);
+  try {
+    fs.appendFileSync(logFilePath, JSON.stringify(logData) + '\n');
+  } catch (err) {
+    console.error('Failed to write to log file:', err);
+  }
+}
 
 // Grab the blacklist from the command-line so that we can update the blacklist without deploying
 // again. CORS Anywhere is open by design, and this blacklist is not used, except for countering
@@ -83,20 +105,20 @@ function observeRequest(req, res) {
   var bytesSent = 0;
   var originalWrite = res.write;
   var originalEnd = res.end;
-  res.write = function(chunk, encoding, callback) {
+  res.write = function (chunk, encoding, callback) {
     if (chunk) {
       bytesSent += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
     }
     return originalWrite.call(this, chunk, encoding, callback);
   };
-  res.end = function(chunk, encoding, callback) {
+  res.end = function (chunk, encoding, callback) {
     if (chunk) {
       bytesSent += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
     }
     return originalEnd.call(this, chunk, encoding, callback);
   };
 
-  res.on('finish', function() {
+  res.on('finish', function () {
     metrics.inflight = Math.max(0, metrics.inflight - 1);
     metrics.bytesSentTotal += bytesSent;
     var durationMs = getDurationMs(start);
@@ -117,7 +139,7 @@ function observeRequest(req, res) {
       targetUrl = req.corsAnywhereRequestState.location.href;
     }
 
-    console.log(JSON.stringify({
+    var logData = {
       ts: new Date().toISOString(),
       level: 'info',
       msg: 'request completed',
@@ -131,7 +153,12 @@ function observeRequest(req, res) {
       origin: req.headers.origin || null,
       userAgent: req.headers['user-agent'] || null,
       clientIp: req.headers['x-forwarded-for'] || req.connection.remoteAddress || null,
-    }));
+    };
+
+    saveFullLog(logData);
+
+    var time = logData.ts.replace('T', ' ').split('.')[0];
+    console.log(time + ' ' + logData.clientIp + ' ' + (logData.targetUrl || 'n/a'));
   });
 }
 
@@ -150,11 +177,11 @@ function formatMetrics() {
   lines.push('cors_anywhere_request_duration_ms_count ' + metrics.requestsTotal);
   lines.push('# TYPE cors_anywhere_request_duration_ms_max gauge');
   lines.push('cors_anywhere_request_duration_ms_max ' + metrics.durationMsMax.toFixed(3));
-  Object.keys(metrics.responsesByStatusClass).forEach(function(statusClass) {
+  Object.keys(metrics.responsesByStatusClass).forEach(function (statusClass) {
     lines.push('cors_anywhere_responses_total{status_class="' + statusClass + '"} ' +
       metrics.responsesByStatusClass[statusClass]);
   });
-  Object.keys(metrics.requestsByMethod).forEach(function(method) {
+  Object.keys(metrics.requestsByMethod).forEach(function (method) {
     lines.push('cors_anywhere_requests_total_by_method{method="' + method + '"} ' +
       metrics.requestsByMethod[method]);
   });
@@ -170,7 +197,7 @@ var server = cors_proxy.createServer({
   requireHeader: null,
   // requireHeader: ['origin', 'x-requested-with'],
   checkRateLimit: checkRateLimit,
-  handleInitialRequest: function(req, res) {
+  handleInitialRequest: function (req, res) {
     if (isPathMatch(req.url, '/healthz')) {
       res.writeHead(200, {
         'content-type': 'text/plain',
@@ -214,6 +241,6 @@ var server = cors_proxy.createServer({
 
 server.prependListener('request', observeRequest);
 
-server.listen(port, host, function() {
+server.listen(port, host, function () {
   console.log('Running CORS Anywhere on ' + host + ':' + port);
 });
