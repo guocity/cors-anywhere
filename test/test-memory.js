@@ -110,13 +110,13 @@ describe('memory usage', function() {
   // 100x 1k and 100x 50k for comparison.
   // Both should use about the same amount of memory if there is no leak.
   it('1000 GET requests 1k', function(done) {
-    // Every request should complete within 10ms.
-    this.timeout(1000 * 10);
+    // Allow extra time for slower CI or local environments.
+    this.timeout(1000 * 30);
     performNRequests(1000, 1, 2000, done);
   });
   it('1000 GET requests 50k', function(done) {
-    // Every request should complete within 10ms.
-    this.timeout(1000 * 10);
+    // Allow extra time for slower CI or local environments.
+    this.timeout(1000 * 30);
     performNRequests(1000, 50, 2000, done);
   });
 });

@@ -34,6 +34,7 @@ Request examples:
 
 * `http://localhost:8080/http://google.com/` - Google.com with CORS headers
 * `http://localhost:8080/google.com` - Same as previous.
+* `http://localhost:8080/?url=http://google.com/` - Query param style (corsproxy.io-compatible).
 * `http://localhost:8080/google.com:443` - Proxies `https://google.com/`
 * `http://localhost:8080/` - Shows usage text, as defined in `lib/help.txt`
 * `http://localhost:8080/favicon.ico` - Replies 404 Not found
@@ -118,6 +119,13 @@ proxy requests. The following options are supported:
   Example: `600` - Allow CORS preflight request to be cached by the browser for 10 minutes.
 * string `helpFile` - Set the help file (shown at the homepage).  
   Example: `"myCustomHelpText.txt"`
+
+### Observability (server.js)
+
+The bundled `server.js` adds basic observability endpoints and structured logs:
+
+* `GET /healthz` - returns `ok` for health checks.
+* `GET /metrics` - Prometheus-style metrics for requests and latency.
 
 For advanced users, the following options are also provided.
 

@@ -6,8 +6,10 @@ var request = require('supertest');
 var path = require('path');
 var http = require('http');
 var https = require('https');
+var net = require('net');
 var fs = require('fs');
 var assert = require('assert');
+var nock = require('nock');
 
 var helpTextPath = path.join(__dirname, '../lib/help.txt');
 var helpText = fs.readFileSync(helpTextPath, {encoding: 'utf8'});
@@ -37,6 +39,73 @@ function stopServer(done) {
     done();
   });
   cors_anywhere = null;
+}
+
+function rawSocketRequest(path, method, done) {
+  var socket = net.connect(cors_anywhere_port, '127.0.0.1');
+  var requestLines = [
+    (method || 'GET') + ' ' + path + ' HTTP/1.1',
+    'Host: 127.0.0.1:' + cors_anywhere_port,
+    'Connection: close',
+    '',
+    '',
+  ].join('\r\n');
+  var raw = '';
+  socket.setEncoding('utf8');
+  socket.on('data', function(chunk) {
+    raw += chunk;
+  });
+  socket.on('end', function() {
+    var parts = raw.split('\r\n\r\n');
+    var headerPart = parts.shift() || '';
+    var body = parts.join('\r\n\r\n');
+    var headerLines = headerPart.split('\r\n');
+    var statusLine = headerLines.shift() || '';
+    var statusMatch = statusLine.match(/HTTP\/\d\.\d\s+(\d+)/);
+    var statusCode = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+    var headers = {};
+    headerLines.forEach(function(line) {
+      var index = line.indexOf(':');
+      if (index === -1) {
+        return;
+      }
+      var key = line.slice(0, index).trim().toLowerCase();
+      var value = line.slice(index + 1).trim();
+      if (headers[key]) {
+        headers[key] = headers[key] + ', ' + value;
+      } else {
+        headers[key] = value;
+      }
+    });
+    if ((headers['transfer-encoding'] || '').toLowerCase() === 'chunked') {
+      body = decodeChunkedBody(body);
+    }
+    done(null, {statusCode: statusCode, headers: headers}, body);
+  });
+  socket.on('error', function(err) {
+    done(err);
+  });
+  socket.end(requestLines);
+}
+
+function decodeChunkedBody(body) {
+  var result = '';
+  var index = 0;
+  while (index < body.length) {
+    var lineEnd = body.indexOf('\r\n', index);
+    if (lineEnd === -1) {
+      break;
+    }
+    var sizeHex = body.slice(index, lineEnd).trim();
+    var size = parseInt(sizeHex, 16);
+    if (!size) {
+      break;
+    }
+    var start = lineEnd + 2;
+    result += body.slice(start, start + size);
+    index = start + size + 2;
+  }
+  return result;
 }
 
 describe('Basic functionality', function() {
@@ -96,6 +165,22 @@ describe('Basic functionality', function() {
       .expect(200, 'Response from example.com', done);
   });
 
+  it('GET /?url=http://example.com', function(done) {
+    request(cors_anywhere)
+      .get('/?url=http://example.com')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect('x-request-url', 'http://example.com/')
+      .expect(200, 'Response from example.com', done);
+  });
+
+  it('GET /?url=https://example.com', function(done) {
+    request(cors_anywhere)
+      .get('/?url=https://example.com')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect('x-request-url', 'https://example.com/')
+      .expect(200, 'Response from https://example.com', done);
+  });
+
   it('GET /example.com:80', function(done) {
     request(cors_anywhere)
       .get('/example.com:80')
@@ -114,10 +199,13 @@ describe('Basic functionality', function() {
 
   it('GET //example.com', function(done) {
     // '/example.com' is an invalid URL.
-    request(cors_anywhere)
-      .get('//example.com')
-      .expect('Access-Control-Allow-Origin', '*')
-      .expect(200, helpText, done);
+    rawSocketRequest('//example.com', 'GET', function(err, res, body) {
+      if (err) return done(err);
+      assert.strictEqual(res.headers['access-control-allow-origin'], '*');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(body, helpText);
+      done();
+    });
   });
 
   it('GET /http://:1234', function(done) {
@@ -147,8 +235,12 @@ describe('Basic functionality', function() {
 
   it('GET ///example.com', function(done) {
     // API base URL (with trailing slash) + '//example.com'
-    request(cors_anywhere)
-      .get('///example.com')
+    var http_server = http.createServer(function(req, res) {
+      req.url = '///example.com';
+      cors_anywhere.emit('request', req, res);
+    });
+    request(http_server)
+      .get('/dummy')
       .expect('Access-Control-Allow-Origin', '*')
       .expect('x-request-url', 'http://example.com/')
       .expect(200, 'Response from example.com', done);
@@ -165,6 +257,14 @@ describe('Basic functionality', function() {
   it('POST plain text', function(done) {
     request(cors_anywhere)
       .post('/example.com/echopost')
+      .send('{"this is a request body & should not be mangled":1.00}')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect('{"this is a request body & should not be mangled":1.00}', done);
+  });
+
+  it('POST plain text via query url', function(done) {
+    request(cors_anywhere)
+      .post('/?url=http://example.com/echopost')
       .send('{"this is a request body & should not be mangled":1.00}')
       .expect('Access-Control-Allow-Origin', '*')
       .expect('{"this is a request body & should not be mangled":1.00}', done);
@@ -190,7 +290,7 @@ describe('Basic functionality', function() {
       .expect('x-cors-redirect-1', '302 http://example.com/redirecttarget')
       .expect('x-final-url', 'http://example.com/redirecttarget')
       .expect('access-control-expose-headers', /some-header,x-final-url/)
-      .expectNoHeader('header at redirect')
+      .expectNoHeader('header-at-redirect')
       .expect(200, undefined, done);
   });
 
@@ -204,7 +304,7 @@ describe('Basic functionality', function() {
       .expect('x-cors-redirect-1', '302 http://example.com/redirecttarget')
       .expect('x-final-url', 'http://example.com/redirecttarget')
       .expect('access-control-expose-headers', /some-header,x-final-url/)
-      .expectNoHeader('header at redirect')
+      .expectNoHeader('header-at-redirect')
       .expect(200, 'redirect target', done);
   });
 
@@ -295,10 +395,13 @@ describe('Basic functionality', function() {
   it('OPTIONS //bogus', function(done) {
     // The preflight request always succeeds, regardless of whether the request
     // is valid.
-    request(cors_anywhere)
-      .options('//bogus')
-      .expect('Access-Control-Allow-Origin', '*')
-      .expect(200, '', done);
+    rawSocketRequest('//bogus', 'OPTIONS', function(err, res, body) {
+      if (err) return done(err);
+      assert.strictEqual(res.headers['access-control-allow-origin'], '*');
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(body, '');
+      done();
+    });
   });
 
   it('X-Forwarded-* headers', function(done) {
@@ -308,6 +411,7 @@ describe('Basic functionality', function() {
       .expect('Access-Control-Allow-Origin', '*')
       .expectJSON({
         host: 'example.com',
+        'x-forwarded-host': '127.0.0.1:' + String(cors_anywhere_port),
         'x-forwarded-port': String(cors_anywhere_port),
         'x-forwarded-proto': 'http',
       }, done);
@@ -320,6 +424,7 @@ describe('Basic functionality', function() {
       .expect('Access-Control-Allow-Origin', '*')
       .expectJSON({
         host: 'example.com:1337',
+        'x-forwarded-host': '127.0.0.1:' + String(cors_anywhere_port),
         'x-forwarded-port': String(cors_anywhere_port),
         'x-forwarded-proto': 'http',
       }, done);
@@ -332,6 +437,7 @@ describe('Basic functionality', function() {
       .expect('Access-Control-Allow-Origin', '*')
       .expectJSON({
         host: 'example.com',
+        'x-forwarded-host': '127.0.0.1:' + String(cors_anywhere_port),
         'x-forwarded-port': String(cors_anywhere_port),
         'x-forwarded-proto': 'http',
       }, done);
@@ -449,8 +555,11 @@ describe('Proxy errors', function() {
       this.skip();
     }
 
+    var nodeMajor = parseInt(process.versions.node, 10);
     var errorMessage = 'RangeError [ERR_HTTP_INVALID_STATUS_CODE]: Invalid status code: 0';
-    if (parseInt(process.versions.node, 10) < 9) {
+    if (nodeMajor >= 18) {
+      errorMessage = 'Error: Parse Error: Invalid status code';
+    } else if (nodeMajor < 9) {
       errorMessage = 'RangeError: Invalid status code: 0';
     }
     request(cors_anywhere)
@@ -462,10 +571,15 @@ describe('Proxy errors', function() {
   it('Content-Encoding invalid body', function(done) {
     // The HTTP status can't be changed because the headers have already been
     // sent.
+    var nodeMajor = parseInt(process.versions.node, 10);
+    var expectedStatus = nodeMajor >= 18 ? 404 : 418;
+    var expectedBody = nodeMajor >= 18 ?
+      'Not found because of proxy error: Error: Parse Error: Invalid character in chunk size' :
+      '';
     request(cors_anywhere)
       .get('/' + bad_tcp_server_url)
       .expect('Access-Control-Allow-Origin', '*')
-      .expect(418, '', done);
+      .expect(expectedStatus, expectedBody, done);
   });
 
   it('Invalid header values', function(done) {
@@ -525,6 +639,7 @@ describe('server on https', function() {
       .expect('Access-Control-Allow-Origin', '*')
       .expectJSON({
         host: 'example.com',
+        'x-forwarded-host': '127.0.0.1:' + String(cors_anywhere_port),
         'x-forwarded-port': String(cors_anywhere_port),
         'x-forwarded-proto': 'https',
       }, done);
@@ -537,6 +652,7 @@ describe('server on https', function() {
       .expect('Access-Control-Allow-Origin', '*')
       .expectJSON({
         host: 'example.com',
+        'x-forwarded-host': '127.0.0.1:' + String(cors_anywhere_port),
         'x-forwarded-port': String(cors_anywhere_port),
         'x-forwarded-proto': 'https',
       }, done);
@@ -549,6 +665,7 @@ describe('server on https', function() {
       .expect('Access-Control-Allow-Origin', '*')
       .expectJSON({
         host: 'example.com:1337',
+        'x-forwarded-host': '127.0.0.1:' + String(cors_anywhere_port),
         'x-forwarded-port': String(cors_anywhere_port),
         'x-forwarded-proto': 'https',
       }, done);
@@ -560,11 +677,7 @@ describe('NODE_TLS_REJECT_UNAUTHORIZED', function() {
   var bad_https_server;
   var bad_https_server_port;
 
-  var certErrorMessage = 'Error: certificate has expired';
-  // <0.11.11: https://github.com/nodejs/node/commit/262a752c2943842df7babdf55a034beca68794cd
-  if (/^0\.(?!11\.1[1-4]|12\.)/.test(process.versions.node)) {
-    certErrorMessage = 'Error: CERT_HAS_EXPIRED';
-  }
+  var certErrorRegex = /^Not found because of proxy error: (Error: self-signed certificate(?:;.*)?|Error: certificate has expired|Error: CERT_HAS_EXPIRED)$/;
 
   before(function() {
     cors_anywhere = createServer({});
@@ -603,7 +716,10 @@ describe('NODE_TLS_REJECT_UNAUTHORIZED', function() {
       .get('/https://127.0.0.1:' + bad_https_server_port)
       .set('test-include-xfwd', '')
       .expect('Access-Control-Allow-Origin', '*')
-      .expect('Not found because of proxy error: ' + certErrorMessage, done);
+      .expect(function(res) {
+        assert.ok(certErrorRegex.test(res.text), 'Unexpected cert error: ' + res.text);
+      })
+      .end(done);
   });
 
   it('ignore certificate errors via NODE_TLS_REJECT_UNAUTHORIZED=0', function(done) {
@@ -631,7 +747,10 @@ describe('NODE_TLS_REJECT_UNAUTHORIZED', function() {
         .get('/https://127.0.0.1:' + bad_https_server_port)
         .set('test-include-xfwd', '')
         .expect('Access-Control-Allow-Origin', '*')
-        .expect('Not found because of proxy error: ' + certErrorMessage, done);
+        .expect(function(res) {
+          assert.ok(certErrorRegex.test(res.text), 'Unexpected cert error: ' + res.text);
+        })
+        .end(done);
     });
   });
 });
@@ -1182,6 +1301,9 @@ describe('httpProxyOptions.getProxyForUrl', function() {
     delete process.env.https_proxy;
     delete process.env.http_proxy;
     delete process.env.no_proxy;
+    if (!nock.isActive()) {
+      nock.activate();
+    }
   });
   after(function(done) {
     proxy_server.close(function() {
@@ -1192,7 +1314,7 @@ describe('httpProxyOptions.getProxyForUrl', function() {
 
   it('http_proxy should be respected for matching domains', function(done) {
     process.env.http_proxy = proxy_url;
-
+    nock.restore();
     request(cors_anywhere)
       .get('/http://example.com')
       .expect('Access-Control-Allow-Origin', '*')
@@ -1209,7 +1331,7 @@ describe('httpProxyOptions.getProxyForUrl', function() {
 
   it('https_proxy should be respected for matching domains', function(done) {
     process.env.https_proxy = proxy_url;
-
+    nock.restore();
     request(cors_anywhere)
       .get('/https://example.com')
       .expect('Access-Control-Allow-Origin', '*')

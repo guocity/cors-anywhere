@@ -28,17 +28,17 @@
     "server.js"
   ],
   "dependencies": {
-    "http-proxy": "1.11.1",
-    "proxy-from-env": "0.0.1"
+    "http-proxy": "1.18.1",
+    "proxy-from-env": "1.1.0"
   },
   "devDependencies": {
-    "coveralls": "^2.11.6",
-    "eslint": "^2.2.0",
-    "istanbul": "^0.4.2",
-    "lolex": "^1.5.0",
-    "mocha": "^3.4.2",
-    "nock": "^8.2.1",
-    "supertest": "^2.0.1"
+    "coveralls": "^3.1.1",
+    "eslint": "^9.39.2",
+    "istanbul": "^0.4.5",
+    "lolex": "^6.0.0",
+    "mocha": "^11.7.5",
+    "nock": "^14.0.10",
+    "supertest": "^7.2.2"
   },
   "scripts": {
     "lint": "eslint .",
@@ -46,6 +46,6 @@
     "test-coverage": "istanbul cover ./node_modules/.bin/_mocha -- test/test.js test/test-ratelimit.js --reporter spec"
   },
   "engines": {
-    "node": ">=0.10.0"
+    "node": ">=18.20.0"
   }
 }

@@ -41,6 +41,7 @@ function echoheaders(origin) {
       if (!('test-include-xfwd' in headers)) {
         excluded_headers.push('x-forwarded-port');
         excluded_headers.push('x-forwarded-proto');
+        excluded_headers.push('x-forwarded-host');
       }
       var response = {};
       Object.keys(headers).forEach(function(name) {
@@ -48,7 +49,7 @@ function echoheaders(origin) {
           response[name] = headers[name];
         }
       });
-      return response;
+      return [200, response];
     });
 }
 
@@ -81,7 +82,7 @@ nock('http://example.com')
 
   .get('/redirect')
   .reply(302, 'redirecting...', {
-    'header at redirect': 'should not be here',
+    'header-at-redirect': 'should not be here',
     Location: '/redirecttarget',
   })
 
