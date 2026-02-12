@@ -175,6 +175,31 @@ export CORSANYWHERE_RATELIMIT='50 3 my.example.com my2.example.com'
 node server.js
 ```
 
+### Docker
+
+Build and run with Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+This starts the proxy with restart policy `unless-stopped` and publishes port `8080` by default.
+
+The service reads the same environment variables as `server.js`, for example:
+
+```bash
+PORT=8080 \
+CORSANYWHERE_WHITELIST=https://example.com,http://example.com \
+docker compose up -d --build
+```
+
+Useful commands:
+
+```bash
+docker compose logs -f
+docker compose down
+```
+
 
 ## License
 

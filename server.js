@@ -198,7 +198,7 @@ var server = cors_proxy.createServer({
   // requireHeader: ['origin', 'x-requested-with'],
   checkRateLimit: checkRateLimit,
   handleInitialRequest: function (req, res) {
-    if (isPathMatch(req.url, '/healthz')) {
+    if (isPathMatch(req.url, '/health')) {
       res.writeHead(200, {
         'content-type': 'text/plain',
         'cache-control': 'no-store',

@@ -1,0 +1,15 @@
+services:
+  cors-anywhere:
+    build: .
+    container_name: cors-anywhere
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      CORSANYWHERE_WHITELIST: ${CORSANYWHERE_WHITELIST:-}
+      CORSANYWHERE_BLACKLIST: ${CORSANYWHERE_BLACKLIST:-}
+      CORSANYWHERE_RATELIMIT: ${CORSANYWHERE_RATELIMIT:-}
+    volumes:
+      - ./log:/usr/src/app/log
