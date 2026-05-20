@@ -10,6 +10,31 @@ var crypto = require('crypto');
 var fs = require('fs');
 var path = require('path');
 
+var hostsFile = path.join(__dirname, 'hosts.json');
+
+function loadTargetHostWhitelist(filePath) {
+  var hosts;
+  try {
+    hosts = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    console.error('Failed to load target host whitelist from ' + filePath + ':', err);
+    process.exit(1);
+  }
+
+  if (!Array.isArray(hosts)) {
+    console.error('The target host whitelist in ' + filePath + ' must be a JSON array.');
+    process.exit(1);
+  }
+
+  return hosts.map(function (hostPattern) {
+    return String(hostPattern).trim().toLowerCase();
+  }).filter(function (hostPattern) {
+    return hostPattern !== '';
+  });
+}
+
+var targetHostWhitelist = loadTargetHostWhitelist(hostsFile);
+
 // Create log directory if it doesn't exist
 var logDir = path.join(__dirname, 'log');
 if (!fs.existsSync(logDir)) {
@@ -194,6 +219,7 @@ var cors_proxy = require('./lib/cors-anywhere');
 var server = cors_proxy.createServer({
   originBlacklist: originBlacklist,
   originWhitelist: originWhitelist,
+  targetHostWhitelist: targetHostWhitelist,
   requireHeader: null,
   // requireHeader: ['origin', 'x-requested-with'],
   checkRateLimit: checkRateLimit,

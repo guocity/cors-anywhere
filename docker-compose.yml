@@ -4,7 +4,7 @@ services:
     container_name: cors-anywhere
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "8081:8080"
     environment:
       HOST: 0.0.0.0
       PORT: 8080
@@ -12,4 +12,5 @@ services:
       CORSANYWHERE_BLACKLIST: ${CORSANYWHERE_BLACKLIST:-}
       CORSANYWHERE_RATELIMIT: ${CORSANYWHERE_RATELIMIT:-}
     volumes:
+      - ./hosts.json:/usr/src/app/hosts.json:ro
       - ./log:/usr/src/app/log

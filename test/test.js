@@ -821,6 +821,31 @@ describe('originWhitelist', function() {
   });
 });
 
+describe('targetHostWhitelist', function() {
+  before(function() {
+    cors_anywhere = createServer({
+      targetHostWhitelist: ['*.lgnat.com'],
+    });
+    cors_anywhere_port = cors_anywhere.listen(0).address().port;
+  });
+  after(stopServer);
+
+  it('GET /api.lgnat.com with wildcard allowlist', function(done) {
+    request(cors_anywhere)
+      .get('/http://api.lgnat.com')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect('x-request-url', 'http://api.lgnat.com/')
+      .expect(200, 'Response from api.lgnat.com', done);
+  });
+
+  it('GET /lgnat.com with wildcard allowlist', function(done) {
+    request(cors_anywhere)
+      .get('/http://lgnat.com')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect(403, 'The target host "lgnat.com" was not whitelisted by the operator of this proxy.', done);
+  });
+});
+
 describe('handleInitialRequest', function() {
   afterEach(stopServer);
 

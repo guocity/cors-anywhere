@@ -185,6 +185,8 @@ docker compose up -d --build
 
 This starts the proxy with restart policy `unless-stopped` and publishes port `8080` by default.
 
+The bundled `server.js` also reads `hosts.json` to decide which target hosts may be proxied. The default file in this repository allows `*.lgnat.com`, `localhost`, `127.0.0.1`, and `host.docker.internal`.
+
 The service reads the same environment variables as `server.js`, for example:
 
 ```bash

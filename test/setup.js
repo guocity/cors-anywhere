@@ -142,6 +142,12 @@ nock('http://example.com:1234')
   .reply(200, 'Response from example.com:1234')
 ;
 
+nock('http://api.lgnat.com')
+  .persist()
+  .get('/')
+  .reply(200, 'Response from api.lgnat.com')
+;
+
 nock('http://prefix.example.com')
   .persist()
   .get('/')
