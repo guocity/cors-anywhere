@@ -99,6 +99,11 @@ proxy requests. The following options are supported:
 * array of strings `originWhitelist` - If set, requests whose origin is not listed are blocked.  
   If this list is empty, all origins are allowed.
   Example: `['https://good.example.com', 'http://good.example.com']`
+* array of strings `originHostWhitelist` - Like `originWhitelist`, but matches on host name only
+  (scheme and port are ignored) and supports a `*.` wildcard prefix. The host is taken from the
+  `Origin` header, falling back to `Referer`; requests with neither header are allowed.
+  If this list is empty, all origins are allowed.
+  Example: `['*.good.example.com', 'localhost']`
 * function `handleInitialRequest` - If set, it is called with the request, response and a parsed
   URL of the requested destination (null if unavailable). If the function returns true, the request
   will not be handled further. Then the function is responsible for handling the request.
@@ -185,7 +190,9 @@ docker compose up -d --build
 
 This starts the proxy with restart policy `unless-stopped` and publishes port `8080` by default.
 
-The bundled `server.js` also reads `hosts.json` to decide which target hosts may be proxied. The default file in this repository allows `*.lgnat.com`, `localhost`, `127.0.0.1`, and `host.docker.internal`.
+The bundled `server.js` also reads `hosts.json` to decide which *calling sites* may use the proxy. The default file in this repository allows `*.lgnat.com`, `localhost`, `127.0.0.1`, and `host.docker.internal`.
+
+The calling site is taken from the `Origin` header, falling back to `Referer` when `Origin` is absent — browsers omit `Origin` on subresource loads such as `<script>`, `<img>`, `<link>` and `no-cors` fetches. Requests that send neither header (curl, server-to-server) are not browser page requests and are allowed through.
 
 The service reads the same environment variables as `server.js`, for example:
 

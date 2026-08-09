@@ -821,28 +821,60 @@ describe('originWhitelist', function() {
   });
 });
 
-describe('targetHostWhitelist', function() {
+describe('originHostWhitelist', function() {
   before(function() {
     cors_anywhere = createServer({
-      targetHostWhitelist: ['*.lgnat.com'],
+      originHostWhitelist: ['*.lgnat.com', 'localhost', '127.0.0.1', 'host.docker.internal'],
     });
     cors_anywhere_port = cors_anywhere.listen(0).address().port;
   });
   after(stopServer);
 
-  it('GET /api.lgnat.com with wildcard allowlist', function(done) {
+  it('GET /example.com with api.lgnat.com origin', function(done) {
     request(cors_anywhere)
-      .get('/http://api.lgnat.com')
+      .get('/example.com/')
+      .set('Origin', 'https://api.lgnat.com')
       .expect('Access-Control-Allow-Origin', '*')
-      .expect('x-request-url', 'http://api.lgnat.com/')
-      .expect(200, 'Response from api.lgnat.com', done);
+      .expect(200, 'Response from example.com', done);
   });
 
-  it('GET /lgnat.com with wildcard allowlist', function(done) {
+  it('GET /example.com with localhost origin', function(done) {
     request(cors_anywhere)
-      .get('/http://lgnat.com')
+      .get('/example.com/')
+      .set('Origin', 'http://localhost:3000')
       .expect('Access-Control-Allow-Origin', '*')
-      .expect(403, 'The target host "lgnat.com" was not whitelisted by the operator of this proxy.', done);
+      .expect(200, 'Response from example.com', done);
+  });
+
+  it('GET /example.com with apex lgnat origin blocked', function(done) {
+    request(cors_anywhere)
+      .get('/example.com/')
+      .set('Origin', 'https://lgnat.com')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect(403, 'The origin "https://lgnat.com" was not whitelisted by the operator of this proxy.', done);
+  });
+
+  it('GET /example.com with no Origin falls back to Referer', function(done) {
+    request(cors_anywhere)
+      .get('/example.com/')
+      .set('Referer', 'https://page.lgnat.com/charts')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect(200, 'Response from example.com', done);
+  });
+
+  it('GET /example.com with non-whitelisted Referer blocked', function(done) {
+    request(cors_anywhere)
+      .get('/example.com/')
+      .set('Referer', 'https://evil.example.org/')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect(403, 'The origin "https://evil.example.org/" was not whitelisted by the operator of this proxy.', done);
+  });
+
+  it('GET /example.com with neither Origin nor Referer is allowed', function(done) {
+    request(cors_anywhere)
+      .get('/example.com/')
+      .expect('Access-Control-Allow-Origin', '*')
+      .expect(200, 'Response from example.com', done);
   });
 });
 

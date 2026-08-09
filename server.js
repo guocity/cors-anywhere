@@ -33,7 +33,7 @@ function loadTargetHostWhitelist(filePath) {
   });
 }
 
-var targetHostWhitelist = loadTargetHostWhitelist(hostsFile);
+var originHostWhitelist = loadTargetHostWhitelist(hostsFile);
 
 // Create log directory if it doesn't exist
 var logDir = path.join(__dirname, 'log');
@@ -219,7 +219,7 @@ var cors_proxy = require('./lib/cors-anywhere');
 var server = cors_proxy.createServer({
   originBlacklist: originBlacklist,
   originWhitelist: originWhitelist,
-  targetHostWhitelist: targetHostWhitelist,
+  originHostWhitelist: originHostWhitelist,
   requireHeader: null,
   // requireHeader: ['origin', 'x-requested-with'],
   checkRateLimit: checkRateLimit,
